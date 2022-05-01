@@ -35,7 +35,7 @@ class Balancer():
     def seed_partition_map(self):
         """
         Create a partition map with number of shards and sequentially distribute the clusters to
-        each partition index to be balanced further. as we are sorting out clusters by node count, this function
+        each partition index to be balanced further. as we are sorting our clusters by node count, this function
         will get us close, but not exact. hence we do further balancing later
         :return:
         """
@@ -86,7 +86,6 @@ class Balancer():
         to play balancing game later
         :return:
         """
-        _bal_idx = list(self.partition_map.keys())
         _bal_idx = idx_lst
         self.bal_tup_full = []
         while _bal_idx:
@@ -172,8 +171,7 @@ class Balancer():
             lowwater_total = self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[0]]
             highwater_total = self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[1]]
             adj_delta_pc = self.percentile(lowwater_total, highwater_total)
-            # adj_delta_pc = round((self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[0]] / self.o_sorted_bal_dict[
-            #     list(self.o_sorted_bal_dict.keys())[1]]) * 100, 0)
+
             # get adjusted delta if the diff is 40~50%
             if adj_delta_pc > 40 and adj_delta_pc <= 50:
                 self.adjusted_delta = delta / 2
@@ -199,7 +197,7 @@ class Balancer():
                 pass
                 # print("We are done here..")
             else:
-                # this is a cluster that can be shuflled. start counting the nodes as we shuffle
+                # this is a cluster that can be shuffled. start counting the nodes as we shuffle
                 shuffle_count += self.partition_map[list(self.o_sorted_bal_dict.keys())[-1]][cluster]
                 #  if we have enough nodes to meet the adjusted_delta
                 if shuffle_count > self.adjusted_delta:
@@ -209,16 +207,15 @@ class Balancer():
                         for s in self.shuffle_keys:
                             shuffle_count_sum += self.partition_map[list(self.o_sorted_bal_dict.keys())[-1]][s]
                         if shuffle_count_sum < self.partition_map[list(self.o_sorted_bal_dict.keys())[-1]][cluster]:
-                            # this single cluster is a better shuffle than the combined total of previous shulles
+                            # this single cluster is a better shuffle than the combined total of previous shuffles
                             #  we collected. update the shuffle list to clear() and add only this cluster. we should
                             #  be done at this point
                             print("optimimize shuffle...")
                             self.shuffle_keys.clear()
                             self.shuffle_keys.append(cluster)
 
-                    # print("we are done again...")
                 else:
-                    #  add the cluster to shulle list and move on, we have more shuffling to do
+                    #  add the cluster to shuffle list and move on, we have more shuffling to do
                     self.shuffle_keys.append(cluster)
 
     def finalize_pair(self):

@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from itertools import permutations
+from math import pow, ceil
 
 
 class Balancer():
@@ -16,9 +17,20 @@ class Balancer():
         _sorted_cluster = {k: v for k, v in sorted(cluster.items(), key=lambda item: item[1])}
         self.o_sorted_cluster = OrderedDict(_sorted_cluster)
         self.permutation_bucket = list(permutations(range(shards)))
+        self.best_case = self.percentile(self.total_cluster_nodes / self.shards, self.total_cluster_nodes)
+        self.max_score_ceiling = pow(2, ceil(self.shards/2))
+        self.score_repeat_count = 0
         self.score_board = {}
         self.score_count = 0
 
+    def percentile(self, x: int, y: int):
+        """
+        Return x as a percentile of y
+        :param x:
+        :param y:
+        :return:
+        """
+        return round((x/y)*100, 2)
 
     def seed_partition_map(self):
         """
@@ -56,7 +68,15 @@ class Balancer():
         """
         self.score_board[self.score_count] = {}
         for p in self.partition_map.keys():
-            self.score_board[self.score_count][p] = round((sum(self.partition_map[p].values()) / self.total_cluster_nodes) * 100, 2)
+            self.score_board[self.score_count][p] = self.percentile(sum(self.partition_map[p].values()), self.total_cluster_nodes)
+
+        if self.score_count > 0:
+            if self.score_board[self.score_count] == self.score_board[self.score_count - 1]:
+                self.score_repeat_count += 1
+                print(f"{self.score_repeat_count} {self.max_score_ceiling}")
+            else:
+                self.score_repeat_count = 0
+
         self.score_count += 1
 
 
@@ -83,7 +103,7 @@ class Balancer():
         #     sample balanc tupple
         #     [[0, 3], [1, 2]]
 
-    def start_balance(self):
+    def run(self):
         """
         Start balancing the tupple pairs
         :return:
@@ -92,15 +112,20 @@ class Balancer():
 
         # Run balancing for all permutations of the given partition map
         for perm in self.permutation_bucket:
-            self.make_balance_tuple(list(perm))
+            if self.score_repeat_count < self.max_score_ceiling:
 
-            for bal_tup in self.bal_tup_full:
-                self.make_balance_dict(bal_tup)
-                self.get_adjusted_delta()
-                self.shuffle_clusters()
-                self.finalize_pair()
-            self.print_results()
-            self.write_score()
+                self.make_balance_tuple(list(perm))
+
+                for bal_tup in self.bal_tup_full:
+                    self.make_balance_dict(bal_tup)
+                    self.get_adjusted_delta()
+                    self.shuffle_clusters()
+                    self.finalize_pair()
+                self.print_results()
+                self.write_score()
+            else:
+                print(f"We repeated the optimal score {self.max_score_ceiling} times. stopping.")
+                return
 
     def make_balance_dict(self, bal_tup: list):
         """
@@ -122,8 +147,10 @@ class Balancer():
         print(f"o_sorted_bal_dict:{self.o_sorted_bal_dict}")
         # print some data pre-sorting
         for k in self.o_sorted_bal_dict.keys():
+            # print(
+            #     f"pre-optimized sorted_bal[{k}]: {self.o_sorted_bal_dict[k]}, {round((sum(self.partition_map[k].values()) / self.total_cluster_nodes), 2) * 100}%")
             print(
-                f"pre-optimized sorted_bal[{k}]: {self.o_sorted_bal_dict[k]}, {round((sum(self.partition_map[k].values()) / self.total_cluster_nodes), 2) * 100}%")
+                f"pre-optimized sorted_bal[{k}]: {self.o_sorted_bal_dict[k]}, {self.percentile(sum(self.partition_map[k].values()), self.total_cluster_nodes)}%")
 
     def get_adjusted_delta(self):
         """
@@ -142,8 +169,11 @@ class Balancer():
         #  for exmaple 1118 - 559 = 559, in this case we need to make sure the balancing equally divides the delta,
         #  if the delta is >40% <=50% we'll split the delta by 2 to be even.
         try:
-            adj_delta_pc = round((self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[0]] / self.o_sorted_bal_dict[
-                list(self.o_sorted_bal_dict.keys())[1]]) * 100, 0)
+            lowwater_total = self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[0]]
+            highwater_total = self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[1]]
+            adj_delta_pc = self.percentile(lowwater_total, highwater_total)
+            # adj_delta_pc = round((self.o_sorted_bal_dict[list(self.o_sorted_bal_dict.keys())[0]] / self.o_sorted_bal_dict[
+            #     list(self.o_sorted_bal_dict.keys())[1]]) * 100, 0)
             # get adjusted delta if the diff is 40~50%
             if adj_delta_pc > 40 and adj_delta_pc <= 50:
                 self.adjusted_delta = delta / 2
@@ -205,4 +235,5 @@ class Balancer():
     def print_results(self):
         for tier in self.partition_map.keys():
             print(
-                f"optimized tier: {tier} - {sum(self.partition_map[tier].values())}, {round((sum(self.partition_map[tier].values()) / self.total_cluster_nodes), 2) * 100}%")
+                f"optimized tier: {tier} - {sum(self.partition_map[tier].values())}, "
+                f"{self.percentile(sum(self.partition_map[tier].values()), self.total_cluster_nodes)}%")
